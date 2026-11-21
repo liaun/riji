@@ -9410,7 +9410,10 @@ function homeHTML(){
   if(micSupported()) h += '<button class="say-mic" id="sayMic">🎤</button>';
   h += '</div>';
   h += '<div id="sayPreview" class="say-preview"></div>';
-  h += '<button class="btn primary" id="sayGo" style="margin-top:10px;display:none">确认记下</button>';
+  h += '<div class="row" style="gap:8px;margin-top:10px">';
+  h += '<button class="btn primary" id="sayGo" style="display:none;flex:1 1 auto;width:auto;min-width:0;white-space:nowrap">确认记下</button>';
+  if(aiReady()) h += '<button class="btn" id="sayAi" style="display:none;flex:0 0 auto;width:auto;white-space:nowrap;padding:11px 16px">AI 再理解</button>';
+  h += '</div>';
   h += '</section>';
 
   const ups = upcomingEvents().slice(0, 2);
@@ -9770,6 +9773,18 @@ function repHTML(){
 
   h += '<section class="card"><div class="card-title" style="margin-bottom:10px">本月小结</div>' +
        '<div class="summary">' + summaryText(a) + '</div></section>';
+
+  const ym = y + '-' + pad(m + 1);
+  const aiSum = (store.aiSum || {})[ym];
+  h += '<section class="card"><div class="card-head"><div class="card-title">AI 写一段</div>' +
+       '<div class="today-hint">' + (aiReady() ? '' : '先在设置里填密钥') + '</div></div>';
+  if(aiSum){
+    h += '<div class="summary" style="margin-bottom:12px">' + esc(aiSum) + '</div>';
+  }else{
+    h += '<div class="note" style="margin-bottom:12px">让 AI 看一遍这个月的运动和日记，写两三句话。会比上面那段像人话。</div>';
+  }
+  h += '<button class="btn" data-act="aiSum" data-ym="' + ym + '"' + (aiReady() ? '' : ' disabled style="opacity:.5"') + '>' + (aiSum ? '重新写一段' : '写一段') + '</button>';
+  h += '<div class="note" style="margin-top:8px">会把本月数据和日记发给你配置的模型。</div></section>';
   h += '<div style="height:6px"></div>';
   return h;
 }
@@ -9858,6 +9873,17 @@ function setHTML(){
     '<div class="warn" style="margin-top:12px">微信 / 邮件的定时提醒需要一个"发送端"。两条路：<br>① 先导出 <b>.ics</b> 日历文件，导进手机自带日历，提醒由系统负责（现在就能用）；<br>② 后面接一个小定时服务，每天到点发邮件/微信。</div>' +
     '<button class="btn" data-act="exportIcs" style="margin-top:10px">导出日历提醒 .ics</button></section>';
 
+  const ac = aiConf();
+  h += '<section class="card"><div class="card-head"><div class="card-title">AI 增强（可选）</div><div class="today-hint">' + (aiReady() ? '已填密钥' : '未配置') + '</div></div>';
+  h += '<div class="note" style="margin-bottom:10px">填了密钥才有这两个能力：① 规则听不懂的话，可以「让 AI 再理解一次」；② 月报可以「让 AI 写一段」。不填也照常用。</div>';
+  h += '<div class="field"><label class="label">API 地址</label><input type="text" id="aiUrl" value="' + esc(ac.url) + '" style="font-size:13px"></div>';
+  h += '<div class="field"><label class="label">模型</label><input type="text" id="aiModel" value="' + esc(ac.model) + '" style="font-size:13px"></div>';
+  h += '<div class="field"><label class="label">密钥</label><input type="password" id="aiKey" value="' + esc(aiKey()) + '" placeholder="sk-..." autocomplete="off" style="font-size:13px"></div>';
+  h += '<button class="btn" data-act="aiTest" style="margin-top:10px">测试连接</button>';
+  h += '<div class="note" style="margin-top:10px">密钥只存在这台设备的浏览器里，不写进代码、不会出现在导出的备份里。</div>';
+  h += '<div class="warn" style="margin-top:8px">用 AI 时，你这句话或这个月的日记会发送到上面配置的服务商。介意就不要用。</div>';
+  h += '</section>';
+
   h += '<section class="card"><div class="card-head"><div class="card-title">纪念日</div><div class="today-hint">' + store.events.length + ' 个</div></div>';
   if(!store.events.length){
     h += '<div class="empty">还没有纪念日，加一个吧</div>';
@@ -9940,6 +9966,8 @@ function bindInputs(){
   }
   const sayGo = $('#sayGo');
   if(sayGo && !sayGo.dataset.bound){ sayGo.dataset.bound = '1'; sayGo.addEventListener('click', applySay); }
+  const sayAi = $('#sayAi');
+  if(sayAi && !sayAi.dataset.bound){ sayAi.dataset.bound = '1'; sayAi.addEventListener('click', aiSayClick); }
 
   const sayMic = $('#sayMic');
   if(sayMic && !sayMic.dataset.bound){
@@ -9971,6 +9999,21 @@ function bindInputs(){
   bindVal('#endInput', function(){ store.settings.shiftEnd = this.value; persist(); rerenderSet(); });
   bindVal('#dayStartInput', function(){ store.settings.dayStart = this.value; DAY_START = toMin(this.value); persist(); toast('一天的起点已改为 ' + this.value); });
   bindVal('#remindInput', function(){ store.settings.remindTime = this.value; persist(); toast('提醒时间已保存'); });
+  bindVal('#aiUrl', function(){
+    store.settings.ai = store.settings.ai || {};
+    store.settings.ai.url = this.value.trim() || 'https://api.deepseek.com/chat/completions';
+    persist(); toast('已保存');
+  });
+  bindVal('#aiModel', function(){
+    store.settings.ai = store.settings.ai || {};
+    store.settings.ai.model = this.value.trim() || 'deepseek-chat';
+    persist(); toast('已保存');
+  });
+  bindVal('#aiKey', function(){
+    aiSetKey(this.value.trim());
+    toast(this.value.trim() ? '密钥已存在本机' : '密钥已清除');
+    render();
+  });
 }
 
 function rerenderSet(){
@@ -10013,22 +10056,72 @@ function sayActionLabel(a){
   if(a.t === 'shift') return '排班 · ' + d + ' 改成' + SHIFT_TXT[a.value];
   return a.t;
 }
+function paintSay(actions, source){
+  const box = $('#sayPreview'), btn = $('#sayGo'), aiBtn = $('#sayAi');
+  if(!box) return;
+  sayLast = actions;
+  const head = source === 'AI' ? '<div class="say-chip" style="background:#FBF4E4;color:#6E5622">AI 的理解</div>' : '';
+  box.innerHTML = head + actions.map(function(a){ return '<div class="say-chip">' + sayActionLabel(a) + '</div>'; }).join('');
+  if(btn) btn.style.display = actions.length ? '' : 'none';
+  if(aiBtn) aiBtn.style.display = '';
+}
 function updateSayPreview(){
   const inp = $('#sayInput');
   if(!inp) return;
-  const box = $('#sayPreview'), btn = $('#sayGo');
+  const box = $('#sayPreview');
   if(!box) return;
   const text = inp.value.trim();
+  const btn = $('#sayGo'), aiBtn = $('#sayAi');
   if(!text){
     box.innerHTML = ''; sayLast = [];
     if(btn) btn.style.display = 'none';
+    if(aiBtn) aiBtn.style.display = 'none';
     return;
   }
-  const r = parseSay(text, todayStr());
-  sayLast = r.actions;
-  box.innerHTML = r.actions.map(function(a){ return '<div class="say-chip">' + sayActionLabel(a) + '</div>'; }).join('');
-  if(btn) btn.style.display = r.actions.length ? '' : 'none';
+  paintSay(parseSay(text, todayStr()).actions, '');
 }
+async function aiSayClick(){
+  const inp = $('#sayInput'), btn = $('#sayAi');
+  const text = inp ? inp.value.trim() : '';
+  if(!text) return;
+  if(btn){ btn.disabled = true; btn.textContent = '理解中…'; }
+  try{
+    const acts = await aiParseSay(text);
+    if(!acts.length){ toast('AI 也没看懂这段话'); }
+    else { paintSay(acts, 'AI'); toast('AI 理解好了，确认一下'); }
+  }catch(e){
+    toast('AI 失败：' + (e && e.message ? e.message : '未知错误'));
+  }
+  if(btn){ btn.disabled = false; btn.textContent = 'AI 再理解'; }
+}
+
+async function aiTestConnection(){
+  const btn = document.querySelector('[data-act="aiTest"]');
+  if(btn){ btn.disabled = true; btn.textContent = '测试中…'; }
+  try{
+    const txt = await aiCall([{ role: 'user', content: '只回复两个字：能用' }], { max_tokens: 20 });
+    toast('连上了：' + String(txt || '').trim().slice(0, 24));
+  }catch(e){
+    toast('失败：' + (e && e.message ? e.message : '未知错误'));
+  }
+  if(btn){ btn.disabled = false; btn.textContent = '测试连接'; }
+}
+
+async function aiSummaryClick(el){
+  const ym = el.dataset.ym;
+  const oldTxt = el.textContent;
+  el.disabled = true; el.textContent = '正在写…';
+  try{
+    const text = await aiWriteSummary(ym);
+    store.aiSum = store.aiSum || {};
+    store.aiSum[ym] = text || '';
+    flush(); render(); toast('写好了');
+  }catch(e){
+    toast('失败：' + (e && e.message ? e.message : '未知错误'));
+    el.disabled = false; el.textContent = oldTxt;
+  }
+}
+
 function applySay(){
   if(!sayLast.length) return;
   let n = 0;
@@ -10047,6 +10140,130 @@ function applySay(){
   sayLast = [];
   render();
   toast('记下了 ' + n + ' 条');
+}
+
+
+/* ============ AI 增强（可选） ============ */
+const AI_KEY_STORAGE = 'riji.aikey';
+
+function aiKey(){ try{ return localStorage.getItem(AI_KEY_STORAGE) || ''; }catch(e){ return ''; } }
+function aiSetKey(v){
+  try{ if(v) localStorage.setItem(AI_KEY_STORAGE, v); else localStorage.removeItem(AI_KEY_STORAGE); }catch(e){}
+}
+function aiConf(){
+  const a = store.settings.ai || {};
+  return { url: a.url || 'https://api.deepseek.com/chat/completions', model: a.model || 'deepseek-chat' };
+}
+function aiReady(){ return !!aiKey(); }
+
+async function aiCall(messages, opts){
+  const c = aiConf(), key = aiKey();
+  if(!key) throw new Error('还没填密钥');
+  const body = Object.assign({ model: c.model, messages: messages, temperature: 0.3, stream: false }, opts || {});
+  let res;
+  try{
+    res = await fetch(c.url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
+      body: JSON.stringify(body)
+    });
+  }catch(e){
+    throw new Error('连不上（' + (e && e.message ? e.message : '网络错误') + '）');
+  }
+  if(!res.ok){
+    let t = '';
+    try{ t = (await res.text()).slice(0, 160); }catch(e){}
+    throw new Error('接口 ' + res.status + (t ? '：' + t : ''));
+  }
+  const data = await res.json();
+  const msg = data && data.choices && data.choices[0] && data.choices[0].message;
+  return msg && msg.content ? String(msg.content) : '';
+}
+
+function aiParseSystem(){
+  const t = todayStr();
+  return [
+    '你是「日迹」App 的记录解析器。把用户的一句话转成 JSON。只输出 JSON，不要解释，不要代码块。',
+    '今天是 ' + t + '，昨天是 ' + sayAdd(t, -1) + '，明天是 ' + sayAdd(t, 1) + '。',
+    '输出 {"actions":[...]}，每个动作只能是下面之一：',
+    '{"t":"workout","date":"YYYY-MM-DD","type":"跑步|力量|快走|骑行|游泳|球类|瑜伽|其他","minutes":30}',
+    '{"t":"weight","date":"YYYY-MM-DD","slot":"am|pm","value":68.4}',
+    '{"t":"note","date":"YYYY-MM-DD","text":"不超过60字"}',
+    '{"t":"tag","date":"YYYY-MM-DD","tags":["工作|家里|朋友|学习|健康|休息|出行|其他"]}',
+    '{"t":"star","date":"YYYY-MM-DD"}',
+    '{"t":"event","title":"","type":"solar|lunar","month":3,"day":5,"leadDays":3}',
+    '{"t":"shift","date":"YYYY-MM-DD","value":"work|rest|leave"}',
+    '规则：斤要除以2换成公斤；没说时长按30分钟；日期必须是 YYYY-MM-DD；拿不准就不要编。'
+  ].join('\n');
+}
+
+function extractJson(text){
+  let s = String(text || '').trim();
+  s = s.replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+  const i = s.indexOf('{'), j = s.lastIndexOf('}');
+  if(i >= 0 && j > i) s = s.slice(i, j + 1);
+  return JSON.parse(s);
+}
+
+function normalizeAiActions(arr){
+  const out = [];
+  const isDate = function(d){ return /^\d{4}-\d{2}-\d{2}$/.test(String(d || '')) && !isNaN(parseYmd(String(d))); };
+  (Array.isArray(arr) ? arr : []).forEach(function(a){
+    if(!a || !a.t) return;
+    if(a.t === 'workout' && isDate(a.date) && TYPES.indexOf(a.type) >= 0){
+      out.push({ t: 'workout', date: a.date, type: a.type, minutes: Math.max(5, Math.min(600, Math.round(Number(a.minutes) || 30))) });
+    }else if(a.t === 'weight' && isDate(a.date) && isFinite(Number(a.value))){
+      const v = Number(a.value);
+      if(v > 20 && v < 400) out.push({ t: 'weight', date: a.date, slot: a.slot === 'pm' ? 'pm' : 'am', value: Math.round(v * 10) / 10 });
+    }else if(a.t === 'note' && isDate(a.date) && a.text){
+      out.push({ t: 'note', date: a.date, text: String(a.text).slice(0, 80) });
+    }else if(a.t === 'tag' && isDate(a.date) && Array.isArray(a.tags)){
+      const tags = a.tags.filter(function(x){ return TAGS.indexOf(x) >= 0; });
+      if(tags.length) out.push({ t: 'tag', date: a.date, tags: tags });
+    }else if(a.t === 'star' && isDate(a.date)){
+      out.push({ t: 'star', date: a.date });
+    }else if(a.t === 'event' && a.month && a.day){
+      const mo = Number(a.month), dd = Number(a.day);
+      if(mo >= 1 && mo <= 12 && dd >= 1 && dd <= 31){
+        out.push({ t: 'event', title: String(a.title || '纪念日').slice(0, 30), type: a.type === 'lunar' ? 'lunar' : 'solar', month: mo, day: dd, leadDays: Math.max(0, Math.min(30, Number(a.leadDays) || 3)) });
+      }
+    }else if(a.t === 'shift' && isDate(a.date) && ['work', 'rest', 'leave'].indexOf(a.value) >= 0){
+      out.push({ t: 'shift', date: a.date, value: a.value });
+    }
+  });
+  return out;
+}
+
+async function aiParseSay(text){
+  const content = await aiCall([
+    { role: 'system', content: aiParseSystem() },
+    { role: 'user', content: text }
+  ], { response_format: { type: 'json_object' } });
+  const obj = extractJson(content);
+  return normalizeAiActions(obj && obj.actions);
+}
+
+async function aiWriteSummary(ym){
+  const parts = ym.split('-');
+  const y = +parts[0], m = +parts[1] - 1;
+  const a = monthAgg(y, m);
+  const payload = {
+    月份: ym,
+    上班天数: a.work,
+    休息天数: a.rest,
+    运动次数: a.wkCount,
+    运动总分钟: a.wkMin,
+    运动项目: a.typeMin,
+    体重月初: a.weights.length ? a.weights[0].w : null,
+    体重月末: a.weights.length ? a.weights[a.weights.length - 1].w : null,
+    标签: a.tags,
+    日记: a.notes.slice(-40).map(function(n){ return n.date + ' ' + n.note.slice(0, 60); })
+  };
+  const content = await aiCall([
+    { role: 'system', content: '你是一个记录我生活的朋友。用 2-3 句话总结我这个月。语气平实自然，像跟人说话；不要列点，不要鸡汤，不要用「您」，不要复述所有数字。' },
+    { role: 'user', content: JSON.stringify(payload) }
+  ]);
+  return String(content || '').trim();
 }
 
 /* ============ 某一天 ============ */
@@ -10190,6 +10407,9 @@ document.addEventListener('click', function(e){
     store.events = store.events.filter(function(x){ return x.id !== el.dataset.id; });
     flush(); render(); toast('已删除'); return;
   }
+  if(act === 'aiTest'){ aiTestConnection(); return; }
+  if(act === 'aiSay'){ aiSayClick(); return; }
+  if(act === 'aiSum'){ aiSummaryClick(el); return; }
   if(act === 'exportIcs'){ exportIcs(); return; }
   if(act === 'exportJson'){
     download('riji-backup-' + todayStr() + '.json', JSON.stringify(store, null, 2), 'application/json');
