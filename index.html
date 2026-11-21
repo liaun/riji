@@ -9407,6 +9407,7 @@ function homeHTML(){
   h += '<div class="card-head"><div class="card-title">说一句</div><div class="today-hint">或用键盘麦克风</div></div>';
   h += '<div class="row" style="gap:8px">';
   h += '<input type="text" id="sayInput" class="say-input" autocomplete="off" placeholder="今天跑了30分钟 / 体重68.4 / 3月5日妈妈生日">';
+  h += '<button class="say-mic" id="sayPaste" title="从剪贴板粘贴">📋</button>';
   if(micSupported()) h += '<button class="say-mic" id="sayMic">🎤</button>';
   h += '</div>';
   h += '<div id="sayPreview" class="say-preview"></div>';
@@ -9969,6 +9970,23 @@ function bindInputs(){
   const sayAi = $('#sayAi');
   if(sayAi && !sayAi.dataset.bound){ sayAi.dataset.bound = '1'; sayAi.addEventListener('click', aiSayClick); }
 
+  const sayPaste = $('#sayPaste');
+  if(sayPaste && !sayPaste.dataset.bound){
+    sayPaste.dataset.bound = '1';
+    sayPaste.addEventListener('click', async function(){
+      try{
+        if(!navigator.clipboard || !navigator.clipboard.readText) throw new Error('no api');
+        const txt = (await navigator.clipboard.readText()).trim();
+        if(!txt){ toast('剪贴板是空的'); return; }
+        const inp = $('#sayInput');
+        if(inp){ inp.value = txt.slice(0, 300); updateSayPreview(); }
+        toast('已粘贴，确认一下');
+      }catch(e){
+        toast('浏览器不让读剪贴板，长按输入框粘贴');
+      }
+    });
+  }
+
   const sayMic = $('#sayMic');
   if(sayMic && !sayMic.dataset.bound){
     sayMic.dataset.bound = '1';
@@ -10520,8 +10538,12 @@ function exportIcs(){
   if(hs.indexOf('day=') === 0) setTimeout(function(){ openDay(hs.slice(4)); }, 60);
   if(hs.indexOf('say=') === 0) setTimeout(function(){
     const inp = $('#sayInput');
-    if(inp){ inp.value = hs.slice(4); updateSayPreview(); }
-  }, 60);
+    if(!inp) return;
+    inp.value = hs.slice(4).slice(0, 300);
+    updateSayPreview();
+    const card = inp.closest('.card');
+    if(card) card.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }, 80);
 })();
 
 document.addEventListener('visibilitychange', function(){
