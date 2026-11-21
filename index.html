@@ -220,6 +220,10 @@ textarea{resize:none;line-height:1.55;min-height:64px}
 .cmp-row > div{flex:1;text-align:center;background:var(--soft);border-radius:11px;padding:10px 4px}
 .cmp-row span{display:block;font-size:10.5px;color:var(--muted);margin-bottom:3px}
 .cmp-row b{font-size:15px;font-weight:650;font-variant-numeric:tabular-nums}
+.say-input{flex:1}
+.say-preview{margin-top:10px;display:flex;flex-direction:column;gap:6px}
+.say-chip{background:var(--soft);border-radius:10px;padding:8px 11px;font-size:13px;color:#4A443B}
+.say-mic{width:38px;height:38px;flex:0 0 auto;border-radius:11px;border:1px solid var(--line);background:#fff;font-size:16px;line-height:1}
 </style>
 </head>
 <body>
@@ -8909,6 +8913,223 @@ function lunarMdText(ev){
   }catch(e){ return '农历 ' + ev.month + '月' + ev.day + '日'; }
 }
 
+/* ============ 口语解析 ============ */
+const SAY_WORKOUT = [
+  { type: '跑步', re: /(晨跑|夜跑|慢跑|跑步|跑[了过]?)/ },
+  { type: '力量', re: /(力量|健身|撸铁|深蹲|卧推|硬拉|器械|练[了过]?)/ },
+  { type: '骑行', re: /(骑行|骑车|单车|自行车)/ },
+  { type: '游泳', re: /(游泳|游[了过]个?)/ },
+  { type: '球类', re: /(打[了过]?[^，。]{0,4}?球|踢[了过]?[^，。]{0,4}?球|篮球|足球|羽毛球|乒乓|网球|排球)/ },
+  { type: '瑜伽', re: /(瑜伽|普拉提|拉伸)/ },
+  { type: '快走', re: /(快走|散步|走[了过]?|走路|遛弯)/ }
+];
+const SAY_TAGS = [
+  { tag: '朋友', re: /(朋友|聚会|聚餐|吃饭|约了|喝酒|聊天)/ },
+  { tag: '家里', re: /(家|爸妈|父母|孩子|儿子|女儿|做饭|打扫|收拾|买菜)/ },
+  { tag: '工作', re: /(上班|加班|开会|项目|客户|工作|出差|汇报|方案)/ },
+  { tag: '学习', re: /(学习|看书|读书|英语|课程|上课|考试|复习|练习)/ },
+  { tag: '休息', re: /(休息|躺|睡|午觉|发呆|看剧|刷手机)/ },
+  { tag: '出行', re: /(出门|旅行|旅游|机场|高铁|火车|自驾|爬山|公园)/ }
+];
+const SAY_DUR_RE = /(\d+(?:\.\d+)?\s*个?\s*半?\s*(?:小时|钟头|分钟|分|h|H|min))|(半\s*个?\s*小时)|(一个半小时)/g;
+const SAY_WEEK = { '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6, '日': 7, '天': 7, '七': 7 };
+const SAY_CN = { '零': 0, '一': 1, '二': 2, '两': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9, '十': 10, '正': 1, '冬': 11, '腊': 12 };
+
+function sayPad(n){ return String(n).padStart(2, '0'); }
+function sayYmd(d){ return d.getFullYear() + '-' + sayPad(d.getMonth() + 1) + '-' + sayPad(d.getDate()); }
+function sayParse(s){ const p = s.split('-').map(Number); return new Date(p[0], p[1] - 1, p[2]); }
+function sayAdd(s, n){ return sayYmd(new Date(sayParse(s).getTime() + n * 864e5)); }
+function sayDays(a, b){ return Math.round((sayParse(b) - sayParse(a)) / 864e5); }
+
+function cnNum(s){
+  s = String(s).trim();
+  s = s.replace(/^初/, '').replace(/^廿/, '二十');
+  if(/^\d+(\.\d+)?$/.test(s)) return Number(s);
+  if(s.indexOf('十') >= 0){
+    const parts = s.split('十');
+    const tens = parts[0] ? (SAY_CN[parts[0]] || 0) : 1;
+    const ones = parts[1] ? (SAY_CN[parts[1]] || 0) : 0;
+    return tens * 10 + ones;
+  }
+  let n = 0;
+  for(const ch of s){ if(SAY_CN[ch] === undefined) return NaN; n = n * 10 + SAY_CN[ch]; }
+  return n;
+}
+
+function parseSayDate(text, today, forEvent){
+  let m;
+
+  m = text.match(/(\d{4})年(\d{1,2})月(\d{1,2})[日号]?/);
+  if(m) return { date: sayYmd(new Date(+m[1], +m[2] - 1, +m[3])), rest: text.replace(m[0], ' '), explicit: true };
+
+  m = text.match(/(农历|阴历|旧历)?\s*(\d{1,2}|[一二三四五六七八九十正冬腊初廿]{1,3})月(\d{1,2}|[一二三四五六七八九十正冬腊初廿]{1,3})[日号]?/);
+  if(m){
+    const mo = cnNum(m[2]), dd = cnNum(m[3]);
+    if(mo >= 1 && mo <= 12 && dd >= 1 && dd <= 31){
+      const ty = sayParse(today).getFullYear();
+      let d = new Date(ty, mo - 1, dd);
+      if(forEvent){ if(sayYmd(d) < today) d = new Date(ty + 1, mo - 1, dd); }
+      else { if(sayYmd(d) > today) d = new Date(ty - 1, mo - 1, dd); }
+      return { date: sayYmd(d), rest: text.replace(m[0], ' '), explicit: true, month: mo, day: dd, lunar: !!m[1] };
+    }
+  }
+
+  const rel = [[/大前天/, -3], [/前天/, -2], [/昨天|昨儿|昨晚/, -1], [/今天|今日|今儿|刚才|刚刚/, 0], [/明天|明儿/, 1], [/后天/, 2], [/大后天/, 3]];
+  for(const pair of rel){
+    if(pair[0].test(text)) return { date: sayAdd(today, pair[1]), rest: text.replace(pair[0], ' '), explicit: true };
+  }
+
+  m = text.match(/(下{1,2})?(?:周|星期|礼拜)([一二三四五六日天七])/);
+  if(m){
+    const w = SAY_WEEK[m[2]];
+    const base = sayParse(today);
+    const cur = base.getDay() === 0 ? 7 : base.getDay();
+    let delta;
+    if(m[1]){
+      const monday = new Date(base.getTime() - (cur - 1) * 864e5);
+      const target = new Date(monday.getTime() + 7 * m[1].length * 864e5 + (w - 1) * 864e5);
+      delta = Math.round((target - base) / 864e5);
+    }else{
+      delta = w - cur;
+      if(delta < 0) delta += 7;
+    }
+    return { date: sayAdd(today, delta), rest: text.replace(m[0], ' '), explicit: true };
+  }
+
+  return { date: today, rest: text, explicit: false };
+}
+
+function parseSayMinutes(text){
+  let m = text.match(/一个半小时/);
+  if(m) return 90;
+  m = text.match(/(\d+(\.\d+)?)\s*个?\s*半\s*(小时|钟头)/);
+  if(m) return Math.round(Number(m[1]) * 60 + 30);
+  m = text.match(/(\d+(\.\d+)?)\s*个?\s*(小时|钟头|h|H)/);
+  if(m) return Math.round(Number(m[1]) * 60);
+  m = text.match(/半\s*个?\s*小时/);
+  if(m) return 30;
+  m = text.match(/(\d+|[一二三四五六七八九十正冬腊初廿]{1,3})\s*(分钟|分|min)/);
+  if(m){ const v = cnNum(m[1]); if(!isNaN(v)) return Math.round(v); }
+  m = text.match(/(\d+|[一二三四五六七八九十正冬腊初廿]{1,3})\s*个?\s*(小时|钟头)/);
+  if(m){ const v = cnNum(m[1]); if(!isNaN(v)) return Math.round(v * 60); }
+  return null;
+}
+
+function sayCleanNote(s){
+  s = String(s || '')
+    .replace(/(体重|称了|秤了|测了|量了|量的)/g, ' ')
+    .replace(/(很重要|重要|值得记|记住|里程碑|标记)/g, ' ')
+    .replace(/^(我|刚刚|刚|又|还|就|然后|顺便|另外)+/, '')
+    .replace(/(了|的)+$/, '')
+    .replace(/[，,。；;\s]+/g, ' ')
+    .trim();
+  if(s.replace(/[了的\s]/g, '').length < 2) return '';
+  if(/^(早上|早晨|上午|中午|下午|晚上|夜里|凌晨|睡前|今天|昨天|明天|刚才)$/.test(s)) return '';
+  return s;
+}
+
+function parseSay(text, today){
+  const out = [];
+  const raw = String(text || '').trim();
+  if(!raw) return { actions: [], raw: raw };
+
+  const eventWords = /(生日|纪念日|周年|忌日)/;
+
+  // 1) 纪念日
+  if(eventWords.test(raw)){
+    const dt = parseSayDate(raw, today, true);
+    const lunar = !!dt.lunar || /(农历|阴历|旧历)/.test(raw);
+    let title = dt.rest
+      .replace(/(农历|阴历|旧历|提前\s*\d+\s*天|提醒|帮我|设置|添加|加个|记一下|把|将|给)/g, ' ')
+      .replace(/[，,。；;：:]+/g, ' ')
+      .replace(/\s+/g, '')
+      .trim();
+    if(!title) title = '纪念日';
+    let lead = 3;
+    const lm = raw.match(/提前\s*(\d+)\s*天/);
+    if(lm) lead = +lm[1];
+    if(dt.month){
+      out.push({ t: 'event', title: title, type: lunar ? 'lunar' : 'solar', month: dt.month, day: dt.day, leadDays: lead, lunarDay: dt.lunar ? title : null });
+      return { actions: out, raw: raw };
+    }
+  }
+
+  // 2) 请假 / 换班
+  if(/(请假|调休|休假)/.test(raw)){
+    return { actions: [{ t: 'shift', date: parseSayDate(raw, today, false).date, value: 'leave' }], raw: raw };
+  }
+  if(/(换班|调班)/.test(raw)){
+    return { actions: [{ t: 'shift', date: parseSayDate(raw, today, false).date, value: 'work' }], raw: raw };
+  }
+
+  // 3) 逐句解析
+  const segs = raw.split(/[，,。；;\n]+/).map(function(s){ return s.trim(); }).filter(Boolean);
+  segs.forEach(function(seg){
+    const dt = parseSayDate(seg, today, false);
+    let rest = dt.rest;
+
+    // 体重
+    let val = null, hint = '';
+    let mm = rest.match(/(\d+(?:\.\d+)?)\s*(公斤|kg|KG|千克)/);
+    if(mm){ val = Number(mm[1]); rest = rest.replace(mm[0], ' '); }
+    else if((mm = rest.match(/(\d+(?:\.\d+)?)\s*斤/))){
+      val = Number(mm[1]) / 2; hint = mm[1] + ' 斤 = ' + val.toFixed(1) + ' kg'; rest = rest.replace(mm[0], ' ');
+    }
+    else if((mm = rest.match(/(?:体重|称了|秤了|测了|量了)\s*(?:是|有)?\s*(\d+(?:\.\d+)?)/))){
+      val = Number(mm[1]); rest = rest.replace(mm[0], ' ');
+    }
+    if(val != null && val > 20 && val < 400){
+      const slot = /(晚|晚上|睡前)/.test(seg) ? 'pm' : 'am';
+      out.push({ t: 'weight', date: dt.date, slot: slot, value: Math.round(val * 10) / 10, hint: hint });
+    }
+
+    // 运动
+    let hit = null, hitRe = null;
+    for(const w of SAY_WORKOUT){ if(w.re.test(rest)){ hit = w.type; hitRe = w.re; break; } }
+    if(hit){
+      const mins = parseSayMinutes(rest);
+      out.push({ t: 'workout', date: dt.date, type: hit, minutes: mins || 30, guessed: !mins });
+      rest = rest.replace(/(力量|健身|撸铁|深蹲|卧推|硬拉|器械|跑步|跑|游泳|游|骑行|骑车|单车|自行车|瑜伽|普拉提|拉伸|快走|散步|走路|遛弯|打[了过]?[^，。]{0,4}?球|踢[了过]?[^，。]{0,4}?球|篮球|足球|羽毛球|乒乓|网球|排球)/g, ' ')
+                 .replace(SAY_DUR_RE, ' ');
+    }
+
+    // 标签
+    const tags = [];
+    for(const tg of SAY_TAGS){ if(tg.re.test(rest)) tags.push(tg.tag); }
+    if(hit) tags.push('健康');
+    if(tags.length) out.push({ t: 'tag', date: dt.date, tags: tags.filter(function(v, i, a){ return a.indexOf(v) === i; }) });
+
+    // 星标
+    if(/(重要|值得记|记住|里程碑|标记)/.test(rest)) out.push({ t: 'star', date: dt.date });
+
+    // 一句话
+    const note = sayCleanNote(rest);
+    if(note) out.push({ t: 'note', date: dt.date, text: note });
+  });
+
+  // 4) 只说了农历日期（没有别的动作）→ 当成纪念日
+  const onlyNote = out.length > 0 && out.every(function(a){ return a.t === 'note'; });
+  if((!out.length || onlyNote) && /(农历|阴历|旧历)/.test(raw)){
+    const dt = parseSayDate(raw, today, true);
+    if(dt.month){
+      let title = dt.rest.replace(/(农历|阴历|旧历)/g, ' ').replace(/[，,。；;\s]+/g, '').trim() || '纪念日';
+      out.length = 0;
+      out.push({ t: 'event', title: title, type: 'lunar', month: dt.month, day: dt.day, leadDays: 3 });
+    }
+  }
+
+  if(!out.length) out.push({ t: 'note', date: today, text: raw });
+
+  const merged = [], noteIdx = {};
+  out.forEach(function(a){
+    if(a.t === 'note'){
+      if(noteIdx[a.date] != null){ merged[noteIdx[a.date]].text += '，' + a.text; }
+      else { noteIdx[a.date] = merged.length; merged.push(a); }
+    }else{ merged.push(a); }
+  });
+  return { actions: merged, raw: raw };
+}
+
 /* ============ 常量 ============ */
 const KEY = 'riji.v1';
 const TYPES = ['跑步', '力量', '快走', '骑行', '游泳', '球类', '瑜伽', '其他'];
@@ -9180,6 +9401,17 @@ function homeHTML(){
          '<div class="strip-s ' + s + '">' + SHIFT_TXT[s].slice(0, 1) + '</div></div>';
   }
   h += '</div></section>';
+
+  // 说一句
+  h += '<section class="card">';
+  h += '<div class="card-head"><div class="card-title">说一句</div><div class="today-hint">或用键盘麦克风</div></div>';
+  h += '<div class="row" style="gap:8px">';
+  h += '<input type="text" id="sayInput" class="say-input" autocomplete="off" placeholder="今天跑了30分钟 / 体重68.4 / 3月5日妈妈生日">';
+  if(micSupported()) h += '<button class="say-mic" id="sayMic">🎤</button>';
+  h += '</div>';
+  h += '<div id="sayPreview" class="say-preview"></div>';
+  h += '<button class="btn primary" id="sayGo" style="margin-top:10px;display:none">确认记下</button>';
+  h += '</section>';
 
   const ups = upcomingEvents().slice(0, 2);
   if(!store.events.length){
@@ -9695,6 +9927,42 @@ function bindInputs(){
     });
   }
 
+  const sayInput = $('#sayInput');
+  if(sayInput && !sayInput.dataset.bound){
+    sayInput.dataset.bound = '1';
+    sayInput.addEventListener('input', function(){
+      clearTimeout(sayInput._t);
+      sayInput._t = setTimeout(updateSayPreview, 250);
+    });
+    sayInput.addEventListener('keydown', function(e){
+      if(e.key === 'Enter'){ e.preventDefault(); updateSayPreview(); applySay(); }
+    });
+  }
+  const sayGo = $('#sayGo');
+  if(sayGo && !sayGo.dataset.bound){ sayGo.dataset.bound = '1'; sayGo.addEventListener('click', applySay); }
+
+  const sayMic = $('#sayMic');
+  if(sayMic && !sayMic.dataset.bound){
+    sayMic.dataset.bound = '1';
+    sayMic.addEventListener('click', function(){
+      try{
+        const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const rec = new SR();
+        rec.lang = 'zh-CN';
+        rec.interimResults = false;
+        rec.maxAlternatives = 1;
+        rec.onresult = function(e){
+          const txt = e.results[0][0].transcript;
+          const inp = $('#sayInput');
+          if(inp){ inp.value = txt; updateSayPreview(); }
+        };
+        rec.onerror = function(){ toast('没听清，再来一次'); };
+        rec.start();
+        toast('正在听…');
+      }catch(err){ toast('这个浏览器不支持语音，用键盘麦克风吧'); }
+    });
+  }
+
   const bindVal = function(sel, fn){ const el = $(sel); if(el) el.addEventListener('change', fn); };
   bindVal('#anchorInput', function(){ store.settings.anchorDate = this.value; persist(); toast('轮转起点已更新'); });
   bindVal('#workDaysInput', function(){ store.settings.workDays = Math.max(1, Number(this.value) || 1); persist(); });
@@ -9717,6 +9985,68 @@ function flashSaved(){
   el.textContent = '已保存';
   clearTimeout(flashSaved._t);
   flashSaved._t = setTimeout(function(){ el.textContent = ''; }, 1200);
+}
+
+
+/* ============ 说一句 ============ */
+let sayLast = [];
+
+function micSupported(){
+  return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+}
+function sayDateLabel(date){
+  const t = todayStr();
+  if(date === t) return '今天';
+  if(date === sayAdd(t, -1)) return '昨天';
+  if(date === sayAdd(t, 1)) return '明天';
+  const d = parseYmd(date);
+  return (d.getMonth() + 1) + '月' + d.getDate() + '日';
+}
+function sayActionLabel(a){
+  const d = a.date ? sayDateLabel(a.date) : '';
+  if(a.t === 'workout') return '运动 · ' + a.type + ' ' + a.minutes + ' 分钟 · ' + d;
+  if(a.t === 'weight') return '体重 ' + a.value + ' kg（' + (a.slot === 'pm' ? '晚' : '早') + '）· ' + d + (a.hint ? '　' + a.hint : '');
+  if(a.t === 'note') return '记一句 · ' + esc(a.text) + ' · ' + d;
+  if(a.t === 'tag') return '标签 · ' + a.tags.join('、') + ' · ' + d;
+  if(a.t === 'star') return '星标 · ' + d;
+  if(a.t === 'event') return '纪念日 · ' + esc(a.title) + ' · ' + (a.type === 'lunar' ? '农历' : '阳历') + a.month + '月' + a.day + '日 · 提前 ' + (a.leadDays || 3) + ' 天';
+  if(a.t === 'shift') return '排班 · ' + d + ' 改成' + SHIFT_TXT[a.value];
+  return a.t;
+}
+function updateSayPreview(){
+  const inp = $('#sayInput');
+  if(!inp) return;
+  const box = $('#sayPreview'), btn = $('#sayGo');
+  if(!box) return;
+  const text = inp.value.trim();
+  if(!text){
+    box.innerHTML = ''; sayLast = [];
+    if(btn) btn.style.display = 'none';
+    return;
+  }
+  const r = parseSay(text, todayStr());
+  sayLast = r.actions;
+  box.innerHTML = r.actions.map(function(a){ return '<div class="say-chip">' + sayActionLabel(a) + '</div>'; }).join('');
+  if(btn) btn.style.display = r.actions.length ? '' : 'none';
+}
+function applySay(){
+  if(!sayLast.length) return;
+  let n = 0;
+  sayLast.forEach(function(a, i){
+    if(a.t === 'workout'){ dayOf(a.date).workout.push({ type: a.type, minutes: a.minutes }); n++; }
+    else if(a.t === 'weight'){ dayOf(a.date).weight[a.slot || 'am'] = a.value; n++; }
+    else if(a.t === 'note'){ const d0 = dayOf(a.date); d0.note = (d0.note ? d0.note + '，' : '') + a.text; n++; }
+    else if(a.t === 'tag'){ const d1 = dayOf(a.date); a.tags.forEach(function(tg){ if(d1.tags.indexOf(tg) < 0) d1.tags.push(tg); }); n++; }
+    else if(a.t === 'star'){ dayOf(a.date).star = true; n++; }
+    else if(a.t === 'event'){ store.events.push({ id: 'e' + Date.now() + i, title: a.title, type: a.type, month: a.month, day: a.day, leadDays: a.leadDays || 3 }); n++; }
+    else if(a.t === 'shift'){ store.overrides[a.date] = a.value; n++; }
+  });
+  flush();
+  const inp = $('#sayInput');
+  if(inp) inp.value = '';
+  sayLast = [];
+  render();
+  toast('记下了 ' + n + ' 条');
 }
 
 /* ============ 某一天 ============ */
@@ -9968,6 +10298,10 @@ function exportIcs(){
   if(['home', 'cal', 'rep', 'set'].indexOf(hs) >= 0) tab = hs;
   render();
   if(hs.indexOf('day=') === 0) setTimeout(function(){ openDay(hs.slice(4)); }, 60);
+  if(hs.indexOf('say=') === 0) setTimeout(function(){
+    const inp = $('#sayInput');
+    if(inp){ inp.value = hs.slice(4); updateSayPreview(); }
+  }, 60);
 })();
 
 document.addEventListener('visibilitychange', function(){
