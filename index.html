@@ -8890,6 +8890,8 @@ window.HOLIDAYS = {
 (function(){
 'use strict';
 
+const BUILD = '202611211744';
+
 /* ============ 工具 ============ */
 const $ = (s, r) => (r || document).querySelector(s);
 const pad = n => String(n).padStart(2, '0');
@@ -9467,34 +9469,74 @@ function homeHTML(){
   const t = todayStr();
   const d = parseYmd(t);
   const li = lunarOf(t);
+  const sh = shiftOf(t);
   const hd = holidayOf(t);
   const st = store.settings;
 
   let h = '';
   h += '<div class="topbar"><div class="brand">日 迹</div><div class="today-hint">' + (hd ? hd[0] : '') + '</div></div>';
 
-  h += '<div class="greet">';
-  h += '<div class="greet-hi">' + (function(){ const hh = new Date().getHours(); return hh < 5 ? '凌晨好' : hh < 11 ? '早上好' : hh < 13 ? '中午好' : hh < 18 ? '下午好' : '晚上好'; })() + '</div>';
-  h += '<div class="greet-date">' + (d.getMonth() + 1) + '月' + d.getDate() + '日 <span>' + WEEK[d.getDay()] + '</span></div>';
-  h += '<div class="greet-lunar">' + ((hd || li.lunarFest) ? '🎉 ' : '') + li.full + (ymd(new Date()) !== t ? ' · 还没到 ' + (st.dayStart || '00:00') + '，算上一天' : '') + '</div>';
+  h += '<div class="hero">';
+  h += '<div class="hero-line"><div class="hero-day">' + d.getDate() + '</div><div class="hero-unit">' + (d.getMonth() + 1) + '月 · ' + WEEK[d.getDay()] + '</div></div>';
+  h += '<div class="hero-meta"><span>' + ((hd || li.lunarFest) ? '🎉 ' : '') + li.full + '</span>';
+  if(ymd(new Date()) !== t) h += '<span style="color:#A9741A">· 还没到 ' + (st.dayStart || '00:00') + '，算上一天</span>';
+  h += '</div>';
   h += '</div>';
 
-  h += '<div class="assistant"><div class="a-avatar">日</div><div class="a-bubble">' + assistantLine() + '</div></div>';
+  h += '<section class="card shift-card ' + sh + '">';
+  h += '<div class="shift-row">';
+  h += '<div class="shift-badge">' + SHIFT_TXT[sh].slice(0, 1) + '</div>';
+  h += '<div><div class="shift-main">今天' + SHIFT_TXT[sh] + '</div><div class="shift-sub">' + (sh === 'work' ? shiftRangeText() + ' · ' + shiftDurText() : nextWorkHint(t)) + '</div></div>';
+  h += '<div class="shift-right"><button class="mini-btn" data-act="openDay" data-date="' + t + '">改</button></div>';
+  h += '</div>';
+  h += '<div class="strip">';
+  for(let i = 0; i < 7; i++){
+    const dt = new Date(d.getFullYear(), d.getMonth(), d.getDate() + i);
+    const k = ymd(dt), s = shiftOf(k);
+    h += '<div class="strip-day ' + (i === 0 ? 'now' : '') + '"><div class="strip-w">' + (i === 0 ? '今天' : WEEK1[(dt.getDay() + 6) % 7]) + '</div>' +
+         '<div class="strip-s ' + s + '">' + SHIFT_TXT[s].slice(0, 1) + '</div></div>';
+  }
+  h += '</div></section>';
 
-  h += '<div class="composer">';
-  h += '<input type="text" id="sayInput" autocomplete="off" placeholder="说一句：跑步30分钟 / 体重68.4 / 3月5日妈妈生日">';
-  h += '<button class="c-tool" id="sayPaste" title="粘贴">📋</button>';
-  if(micSupported()) h += '<button class="c-tool" id="sayMic" title="语音">🎤</button>';
+  // 说一句
+  h += '<section class="card">';
+  h += '<div class="card-head"><div class="card-title">说一句</div><div class="today-hint">或对 Siri 说「记一句」</div></div>';
+  h += '<div class="row" style="gap:8px">';
+  h += '<input type="text" id="sayInput" class="say-input" autocomplete="off" placeholder="今天跑了30分钟 / 体重68.4 / 3月5日妈妈生日">';
+  h += '<button class="say-mic" id="sayPaste" title="从剪贴板粘贴">📋</button>';
+  if(micSupported()) h += '<button class="say-mic" id="sayMic">🎤</button>';
   h += '</div>';
   h += '<div id="sayPreview" class="say-preview"></div>';
   h += '<div class="row" style="gap:8px;margin-top:10px">';
   h += '<button class="btn primary" id="sayGo" style="display:none;flex:1 1 auto;width:auto;min-width:0;white-space:nowrap">确认记下</button>';
   if(aiReady()) h += '<button class="btn" id="sayAi" style="display:none;flex:0 0 auto;width:auto;white-space:nowrap;padding:11px 16px">AI 再理解</button>';
   h += '</div>';
+  h += '</section>';
+
+  const ups = upcomingEvents().slice(0, 2);
+  if(!store.events.length){
+    h += '<section class="card" style="display:flex;align-items:center;gap:12px">' +
+      '<div style="flex:1"><div class="cd-title">还没有纪念日</div><div class="cd-sub">生日、结婚纪念日，首页会帮你倒数</div></div>' +
+      '<button class="mini-btn" data-act="tab" data-tab="set">添加</button></section>';
+  }
+  ups.forEach(function(u){
+    h += '<section class="card cd-card" data-act="tab" data-tab="set">';
+    h += '<div class="cd-days">' + (u.inDays === 0 ? '就是今天' : u.inDays) + (u.inDays === 0 ? '' : '<small>天后</small>') + '</div>';
+    h += '<div class="cd-body"><div class="cd-title">' + esc(u.ev.title) + '</div>' +
+         '<div class="cd-sub">' + (u.ev.type === 'lunar' ? lunarMdText(u.ev) : '阳历') + ' · ' + fmtMD(u.date) + '</div></div>';
+    h += '</section>';
+  });
+
+  const q = monthStats(d.getFullYear(), d.getMonth());
+  h += '<div class="stat-row">' +
+    '<div class="stat" data-act="tab" data-tab="rep"><b>' + q.work + '</b><span>天上班</span></div>' +
+    '<div class="stat" data-act="tab" data-tab="rep"><b>' + q.wkCount + '</b><span>次运动</span></div>' +
+    '<div class="stat" data-act="tab" data-tab="rep"><b>' + fmtDur(q.wkMin) + '</b><span>运动时长</span></div>' +
+    '</div>';
 
   if(lastApplied){
     const touchedToday = lastApplied.actions.some(function(a){ return a.date === t; });
-    h += '<section class="card" style="background:#FBF4E4;border-color:#E6D5B4;margin-top:12px">';
+    h += '<section class="card" style="background:#FBF4E4;border-color:#E6D5B4">';
     h += '<div class="card-head"><div class="card-title" style="color:#6E5622">刚刚记下</div>' +
          '<button class="mini-btn" data-act="undoSay" style="color:#A63B2E;border-color:#E6D5B4">撤销</button></div>';
     h += '<div class="say-preview" style="margin-top:0">' + lastApplied.actions.map(function(a){
@@ -9504,36 +9546,15 @@ function homeHTML(){
     h += '</section>';
   }
 
-  h += '<div class="sec-head"><div class="sec-title">今天的记录</div><button class="mini-btn" data-act="openDay" data-date="' + t + '">编辑</button></div>';
-  h += '<div class="tl" data-act="openDay" data-date="' + t + '">' + todayRowsHTML() + '</div>';
+  h += '<section class="card' + (lastApplied && lastApplied.actions.some(function(a){ return a.date === t; }) ? ' flash' : '') + '">';
+  h += '<div class="card-head"><div class="card-title">今日记录</div>' + starBtnHTML(t) + '</div>';
+  h += '<div class="field"><label class="label">运动 <span class="today-hint" id="wkTotal">' + wkTotalText(t) + '</span></label><div id="wk-block">' + workoutHTML(t) + '</div></div>';
+  h += weightBlockHTML(t);
+  h += '<div class="field"><label class="label">标签</label><div class="chips" id="tag-block">' + tagChipsHTML(t) + '</div></div>';
+  h += '<div class="field"><label class="label">一句话</label><textarea id="noteInput" placeholder="今天做了什么、感觉怎么样…">' + esc(dayOf(t).note || '') + '</textarea></div>';
+  h += '</section>';
 
-  h += '<div class="strip-wrap">';
-  h += '<div class="strip">';
-  for(let i = 0; i < 7; i++){
-    const dt = new Date(d.getFullYear(), d.getMonth(), d.getDate() + i);
-    const k = ymd(dt), sh = shiftOf(k);
-    h += '<div class="strip-day ' + (i === 0 ? 'now' : '') + '"><div class="strip-w">' + (i === 0 ? '今天' : WEEK1[(dt.getDay() + 6) % 7]) + '</div>' +
-         '<div class="strip-s ' + sh + '">' + SHIFT_TXT[sh].slice(0, 1) + '</div></div>';
-  }
-  h += '</div></div>';
-
-  const q = monthStats(d.getFullYear(), d.getMonth());
-  h += '<div class="stat-row" style="margin-top:14px">' +
-    '<div class="stat" data-act="tab" data-tab="rep"><b>' + q.work + '</b><span>天上班</span></div>' +
-    '<div class="stat" data-act="tab" data-tab="rep"><b>' + q.wkCount + '</b><span>次运动</span></div>' +
-    '<div class="stat" data-act="tab" data-tab="rep"><b>' + fmtDur(q.wkMin) + '</b><span>运动时长</span></div>' +
-    '</div>';
-
-  const up2 = upcomingEvents()[0];
-  if(up2){
-    h += '<section class="card cd-card" data-act="tab" data-tab="set" style="margin-top:2px">';
-    h += '<div class="cd-days">' + (up2.inDays === 0 ? '今天' : up2.inDays + '<small>天后</small>') + '</div>';
-    h += '<div class="cd-body"><div class="cd-title">' + esc(up2.ev.title) + '</div>' +
-         '<div class="cd-sub">' + (up2.ev.type === 'lunar' ? lunarMdText(up2.ev) : '阳历') + ' · ' + fmtMD(up2.date) + '</div></div>';
-    h += '</section>';
-  }
-
-  h += '<div style="height:10px"></div>';
+  h += '<div style="height:6px"></div>';
   return h;
 }
 
@@ -9859,20 +9880,24 @@ function repHTML(){
   }
   h += '</section>';
 
-  h += '<section class="card"><div class="card-title" style="margin-bottom:10px">本月小结</div>' +
-       '<div class="summary">' + summaryText(a) + '</div></section>';
-
   const ym = y + '-' + pad(m + 1);
   const aiSum = (store.aiSum || {})[ym];
-  h += '<section class="card"><div class="card-head"><div class="card-title">AI 写一段</div>' +
-       '<div class="today-hint">' + (aiReady() ? '' : '先在设置里填密钥') + '</div></div>';
+  h += '<section class="card"><div class="card-head"><div class="card-title">' + (m + 1) + '月总结</div>' +
+       '<div class="today-hint">' + (aiSum ? 'AI' : (aiReady() ? '' : '未配置 AI')) + '</div></div>';
   if(aiSum){
-    h += '<div class="summary" style="margin-bottom:12px">' + esc(aiSum) + '</div>';
+    h += '<div class="summary" style="white-space:pre-wrap">' + esc(aiSum) + '</div>';
+  }else if(!aiReady()){
+    h += '<div class="summary">' + summaryText(a) + '</div>';
   }else{
-    h += '<div class="note" style="margin-bottom:12px">让 AI 看一遍这个月的运动和日记，写两三句话。会比上面那段像人话。</div>';
+    h += '<div class="note" style="margin-bottom:12px">让 AI 看一遍这个月的运动和日记，写一段详细的。</div>';
   }
-  h += '<button class="btn" data-act="aiSum" data-ym="' + ym + '"' + (aiReady() ? '' : ' disabled style="opacity:.5"') + '>' + (aiSum ? '重新写一段' : '写一段') + '</button>';
-  h += '<div class="note" style="margin-top:8px">会把本月数据和日记发给你配置的模型。</div></section>';
+  if(aiReady()){
+    h += '<button class="btn" data-act="aiSum" data-ym="' + ym + '" style="margin-top:14px">' + (aiSum ? '重写' : '写总结') + '</button>';
+    h += '<div class="note" style="margin-top:8px">会把本月数据和日记发给你配置的模型。</div>';
+  }else{
+    h += '<button class="btn" data-act="tab" data-tab="set" style="margin-top:14px">去设置里填 AI 密钥</button>';
+  }
+  h += '</section>';
   h += '<div style="height:6px"></div>';
   return h;
 }
@@ -10388,22 +10413,51 @@ async function aiWriteSummary(ym){
   const parts = ym.split('-');
   const y = +parts[0], m = +parts[1] - 1;
   const a = monthAgg(y, m);
+  const pm = m === 0 ? { y: y - 1, m: 11 } : { y: y, m: m - 1 };
+  const prev = monthAgg(pm.y, pm.m);
+  const ytd = yearAgg(y, m);
+  const ws = a.weights.map(function(w){ return w.w; });
+
   const payload = {
     月份: ym,
-    上班天数: a.work,
-    休息天数: a.rest,
-    运动次数: a.wkCount,
-    运动总分钟: a.wkMin,
-    运动项目: a.typeMin,
-    体重月初: a.weights.length ? a.weights[0].w : null,
-    体重月末: a.weights.length ? a.weights[a.weights.length - 1].w : null,
+    本月: { 上班天数: a.work, 休息天数: a.rest },
+    运动: {
+      次数: a.wkCount,
+      总分钟: a.wkMin,
+      平均每次分钟: a.wkCount ? Math.round(a.wkMin / a.wkCount) : 0,
+      分项目分钟: a.typeMin,
+      上月次数: prev.wkCount,
+      上月总分钟: prev.wkMin
+    },
+    体重: {
+      记录天数: a.weights.length,
+      月初: ws.length ? ws[0] : null,
+      月末: ws.length ? ws[ws.length - 1] : null,
+      最低: ws.length ? Math.min.apply(null, ws) : null,
+      最高: ws.length ? Math.max.apply(null, ws) : null,
+      本月均值: a.avgW,
+      上月均值: prev.avgW
+    },
     标签: a.tags,
-    日记: a.notes.slice(-40).map(function(n){ return n.date + ' ' + n.note.slice(0, 60); })
+    星标: a.stars.map(function(x){ return x.date + ' ' + (x.note || '').slice(0, 40); }),
+    日记: a.notes.slice(-60).map(function(n){ return n.date + ' ' + n.note.slice(0, 80); }),
+    今年至今: { 运动次数: ytd.wkCount, 运动总分钟: ytd.wkMin, 记录条数: ytd.noteCount }
   };
+
+  const sys = [
+    '你是我生活记录 App 里的一个朋友，帮我回顾这个月。',
+    '要求：中文，240 到 360 字，分 3 段，段与段之间空一行。不要标题、不要列表、不要用「您」。',
+    '第 1 段写身体：运动了多少次、什么项目、总量多少，跟上月比是多了还是少了；体重这段时间怎么走的，有起伏就直说。',
+    '第 2 段写生活：从日记和标签里看出我在忙什么、见了谁、状态怎么样，挑两三个具体的事说，不要泛泛而谈。',
+    '第 3 段给一句实在的观察或提醒，要具体、能照做，不要鸡汤，不要写「继续保持」「加油」这类话。',
+    '有数字就用数字，数据里没有的不要编。语气像熟人聊天，平实、克制。'
+  ].join('');
+
   const content = await aiCall([
-    { role: 'system', content: '你是一个记录我生活的朋友。用 2-3 句话总结我这个月。语气平实自然，像跟人说话；不要列点，不要鸡汤，不要用「您」，不要复述所有数字。' },
-    { role: 'user', content: JSON.stringify(payload) }
-  ]);
+    { role: 'system', content: sys },
+    { role: 'user', content: '数据：' + JSON.stringify(payload) }
+  ], { temperature: 0.6 });
+
   return String(content || '').trim();
 }
 
@@ -10691,6 +10745,22 @@ function exportIcs(){
 }
 
 /* ============ 启动 ============ */
+let lastCheck = 0;
+async function checkUpdate(force){
+  const now = Date.now();
+  if(!force && now - lastCheck < 60000) return;
+  lastCheck = now;
+  try{
+    const r = await fetch('version.txt?t=' + now, { cache: 'no-store' });
+    if(!r.ok) return;
+    const v = (await r.text()).trim();
+    if(v && v !== BUILD){
+      try{ localStorage.setItem('riji.seen', v); }catch(e){}
+      location.replace(location.pathname + '?v=' + encodeURIComponent(v) + (location.hash || ''));
+    }
+  }catch(e){}
+}
+
 function processHash(){
   let hs = '';
   try{ hs = decodeURIComponent(location.hash.replace(/^#/, '')); }catch(e){ return false; }
@@ -10733,6 +10803,11 @@ function processHash(){
 })();
 
 window.addEventListener('hashchange', processHash);
+
+setTimeout(function(){ checkUpdate(true); }, 1200);
+document.addEventListener('visibilitychange', function(){
+  if(document.visibilityState === 'visible') checkUpdate(false);
+});
 
 document.addEventListener('visibilitychange', function(){
   if(document.visibilityState === 'visible' && lastDay && todayStr() !== lastDay) render();
