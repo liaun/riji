@@ -10577,27 +10577,48 @@ function exportIcs(){
 }
 
 /* ============ 启动 ============ */
-(function initFromHash(){
+function processHash(){
   let hs = '';
-  try{ hs = decodeURIComponent(location.hash.replace('#', '')); }catch(e){ hs = ''; }
-  if(['home', 'cal', 'rep', 'set'].indexOf(hs) >= 0) tab = hs;
-  render();
-  if(hs.indexOf('day=') === 0) setTimeout(function(){ openDay(hs.slice(4)); }, 60);
+  try{ hs = decodeURIComponent(location.hash.replace(/^#/, '')); }catch(e){ return false; }
+  if(!hs) return false;
+
+  if(['home', 'cal', 'rep', 'set'].indexOf(hs) >= 0){ tab = hs; render(); return true; }
+
+  if(hs.indexOf('day=') === 0){ setTimeout(function(){ openDay(hs.slice(4)); }, 60); return true; }
+
   if(hs.indexOf('saygo=') === 0 || hs.indexOf('say=') === 0){
     const auto = hs.indexOf('saygo=') === 0;
     const body = auto ? hs.slice(6) : hs.slice(4);
+    if(tab !== 'home'){ tab = 'home'; render(); }
     setTimeout(function(){
+      try{ history.replaceState(null, '', location.pathname); }catch(e){}
       const inp = $('#sayInput');
       if(!inp) return;
-      try{ history.replaceState(null, '', location.pathname); }catch(e){}
-      inp.value = body.slice(0, 300);
+      if(!String(body).trim()){
+        toast('链接里没有内容：快捷指令的变量没插上');
+        return;
+      }
+      inp.value = String(body).slice(0, 300);
       updateSayPreview();
       const card = inp.closest('.card');
-      if(card) card.scrollIntoView({ block: 'center', behavior: 'smooth' });
-      if(auto && sayLast.length){ setTimeout(function(){ applySay(); toast('已记下'); }, 250); }
-    }, 80);
+      if(card) card.scrollIntoView({ block: 'center' });
+      if(auto && sayLast.length){ setTimeout(function(){ applySay(); }, 220); }
+    }, 120);
+    return true;
   }
+  return false;
+}
+
+(function(){
+  const hs0 = location.hash.replace(/^#/, '');
+  let d0 = '';
+  try{ d0 = decodeURIComponent(hs0); }catch(e){ d0 = ''; }
+  if(['home', 'cal', 'rep', 'set'].indexOf(d0) >= 0) tab = d0;
+  render();
+  processHash();
 })();
+
+window.addEventListener('hashchange', processHash);
 
 document.addEventListener('visibilitychange', function(){
   if(document.visibilityState === 'visible' && lastDay && todayStr() !== lastDay) render();
