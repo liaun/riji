@@ -216,6 +216,12 @@ textarea{resize:none;line-height:1.55;min-height:64px}
 .chip.sm{padding:6px 11px;font-size:12.5px}
 .step-btn.del{margin-left:2px;color:#A63B2E}
 .cell-dot.star{background:#A9741A}
+.cell.workday{background:#FBEDE9}
+.cell.workday .cell-d{color:#A63B2E;font-weight:650}
+.cell.workday .cell-bar{width:20px;height:3px}
+.cell.today.workday{background:var(--soft)}
+.cell.today.workday .cell-d{color:var(--ink)}
+
 .cmp-row{display:flex;gap:6px}
 .cmp-row > div{flex:1;text-align:center;background:var(--soft);border-radius:11px;padding:10px 4px}
 .cmp-row span{display:block;font-size:10.5px;color:var(--muted);margin-bottom:3px}
@@ -8890,7 +8896,7 @@ window.HOLIDAYS = {
 (function(){
 'use strict';
 
-const BUILD = '202611211744';
+const BUILD = '202611252127';
 
 /* ============ 工具 ============ */
 const $ = (s, r) => (r || document).querySelector(s);
@@ -9644,7 +9650,7 @@ function calHTML(){
     '<button class="nav-btn" data-act="calToday" style="width:auto;padding:0 10px;font-size:12px">今</button>' +
     '<button class="nav-btn" data-act="calMove" data-d="1">›</button></div></div>';
 
-  h += '<div class="legend"><span><i style="background:var(--work)"></i>上班</span>' +
+  h += '<div class="legend"><span><i style="background:#F2D5CE;border:1px solid #E7C9C2"></i>上班</span>' +
        '<span><i style="background:#BFD3C5"></i>休息</span>' +
        '<span><i style="background:#6C93AE;border-radius:50%"></i>有记录</span>' +
        '<span><i style="background:#A9741A;border-radius:50%"></i>星标</span>' +
@@ -9665,6 +9671,7 @@ function calHTML(){
     if(out) cls.push('out');
     if(k === t) cls.push('today');
     if(hd && hd[1] === 1) cls.push('holiday');
+    if(sh === 'work') cls.push('workday');
 
     h += '<div class="' + cls.join(' ') + '" data-act="openDay" data-date="' + k + '">';
     h += '<div class="cell-d">' + dt.getDate() + '</div>';
